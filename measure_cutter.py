@@ -66,8 +66,8 @@ class Ruletka():
 
 
         # edge detection
-        canny_lower_thresh = 50
-        canny_upper_thresh = 200
+        # canny_lower_thresh = 50
+        # canny_upper_thresh = 200
         canny_l2 = True
 
         img_edg = cv2.Canny(res_img,canny_lower_thresh,canny_upper_thresh,L2gradient = canny_l2,apertureSize = 3)
@@ -98,6 +98,10 @@ class Ruletka():
         else:
             # print('The instrument has some angle(lower_circle_diameter != upper_circle_diameter)')
             pixel_to_mm = reference_diameter/upper_circle_diameter
+
+        print(pixel_to_mm)
+
+        pixel_to_mm *= 0.99
 
 
 
@@ -207,3 +211,147 @@ class Ruletka():
         estimated_width = abs(left_top_line[0]-right_top_line[0])
         
         return (left_top_line[0],left_top_line[1],right_top_line[0],left_top_line[1]),estimated_width
+
+
+    def measure_2(self,images,algo_params,reference_diameter):
+        length = 0
+        width = 0
+
+        binary_images = []
+        for image in images:
+            im = cv2.cvtColor(image,cv2.COLOR_RGB2GRAY)
+            (T,thresh) = cv2.threshold(im,0,255,cv2.THRESH_OTSU)
+            binary_images.append(thresh)
+
+        canny_lower_thresh = algo_params['canny_lower_thresh']
+        canny_upper_thresh = algo_params['canny_upper_thresh']
+        canny_l2 = algo_params['canny_l2']
+
+        ref_thr = algo_params['ref_thr']
+        ref_mll = algo_params['ref_mll']
+        ref_mlg = algo_params['ref_mlg']
+
+        cut_thr = algo_params['cut_thr']
+        cut_mll = algo_params['cut_mll']
+        cut_mlg = algo_params['cut_mlg']
+
+
+
+        # creating a resulting image by overlapping all valid images
+        res_img = 255*np.ones(binary_images[0].shape,dtype='uint8')
+
+        for i in range(len(binary_images)):
+            res_img = np.minimum(res_img,binary_images[i])
+
+
+        reference_coords = template_matching(
+            img_path='res_img.jpg',
+            template_path='templates/ref_template.png',
+            vis=False
+        )
+
+        cutter_coords = template_matching(
+            img_path='res_img.jpg',
+            template_path='templates/obj_template.png',
+            vis=False
+        )
+
+        rgb_image = cv2.cvtColor(res_img, cv2.COLOR_GRAY2RGB)
+
+        print(f"reference_coords: {reference_coords}")
+        print(f"cutter_coords: {cutter_coords}")
+        print(f"res_img.shape: {res_img.shape}")
+
+        draw_box(rgb_image,reference_coords)
+        draw_box(rgb_image,cutter_coords)
+
+
+        plt.imshow(rgb_image)
+        plt.show()
+
+        canny_l2 = True
+        img_edg = cv2.Canny(res_img,canny_lower_thresh,canny_upper_thresh,L2gradient = canny_l2,apertureSize = 3)
+
+
+        ref_edg = img_edg[reference_coords[1]:reference_coords[3],
+                        reference_coords[0]:reference_coords[2]]
+
+        cut_edg = img_edg[cutter_coords[1]:cutter_coords[3],
+                        cutter_coords[0]:cutter_coords[2]]
+
+
+        REF_SHIFT = ref_edg.shape[0]//2
+
+        upper_part = ref_edg[:REF_SHIFT,:]
+        lower_part = ref_edg[REF_SHIFT:,:]
+
+        left_up_line, right_up_line = hough_lines(upper_part,ref_thr,ref_mll,ref_mlg,only_vertical=True,only_edges=True)
+        left_low_line, right_low_line = hough_lines(lower_part,ref_thr,ref_mll,ref_mlg,only_vertical=True,only_edges=True)
+
+        upper_circle_diameter = abs(left_up_line[0]-right_up_line[0])
+        lower_circle_diameter = abs(left_low_line[0]-right_low_line[0])
+        # measured diameter with caliper = 50mm
+        # print(f"Upper circle diameter(px) : {upper_circle_diameter}")
+
+        # print(f"Lower circle diameter(px) : {lower_circle_diameter}")
+
+        if upper_circle_diameter==lower_circle_diameter:
+            pixel_to_mm = reference_diameter/upper_circle_diameter
+        else:
+            # print('The instrument has some angle(lower_circle_diameter != upper_circle_diameter)')
+            pixel_to_mm = reference_diameter/upper_circle_diameter
+
+        pixel_to_mm *= 0.99
+
+        thr = 5
+        mll = 2
+        mlg = 1
+
+        # finding all horizontal lines
+        all_lines_hor = hough_lines(cut_edg, thr,mll, mlg, only_vertical=False, only_horizontal=True, only_edges=False)
+
+        for line in all_lines_hor:
+            line[0] += cutter_coords[0]
+            line[1] += cutter_coords[1]
+            line[2] += cutter_coords[0]
+            line[3] += cutter_coords[1]
+
+        # get highest and lowest horizontal lines
+        upper_line = all_lines_hor[0]
+        lower_line = all_lines_hor[0]
+
+        for line in all_lines_hor:
+            if line[1] < lower_line[1]:
+                lower_line = line
+            elif line[1] > upper_line[1]:
+                upper_line = line
+
+        print(f"all_lines: {all_lines_hor}")
+        print(f"all_lines[0]: {all_lines_hor[0]}")
+        print(f"len(all_lines): {len(all_lines_hor)}")
+
+
+        lines_cutter_vertical = hough_lines(cut_edg,cut_thr,cut_mll,cut_mlg,only_vertical=True)
+        CUTTER_MID = cut_edg.shape[1]//2
+        width_line, width = self.cutter_width(lines_cutter_vertical,CUTTER_MID)
+        width_real = round(width*pixel_to_mm,3)
+
+
+        draw_lines(rgb_image,all_lines_hor)
+
+        draw_lines(rgb_image,(lower_line, upper_line),(255,0,0))
+
+        
+        distance_px = upper_line[1] - lower_line[1]
+        distance_mm = distance_px * pixel_to_mm
+
+        print(f"pixel_to_mm: {pixel_to_mm}")
+        print(f"cutter length(px) : {distance_px} | (mm) : {distance_mm}")
+        print(f"cutter width(px) : {width} | (mm) : {width_real}")
+
+        plt.imshow(rgb_image)
+        plt.show()
+
+        return distance_mm, width_real
+
+        

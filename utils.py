@@ -85,6 +85,21 @@ def hough_lines(img,thr,min_line_length,max_line_gap,only_vertical=False,only_ho
     '''
     linesP = cv2.HoughLinesP(img,1,np.pi/180,thr,None,min_line_length,max_line_gap)
 
+    # print(f"linesP : {linesP}")
+    # print(linesP[0])
+    # print(linesP[0][0])
+    # draw_lines(img,linesP)
+
+    # linesP_reshaped = []
+    # for l in linesP:
+    #     line = l[0]
+    #     linesP_reshaped.append(line)
+
+    # draw_lines(img,linesP_reshaped)
+
+
+    
+
     if linesP is not None:
         # print(f"detected {len(linesP)} lines")
         
@@ -111,15 +126,25 @@ def hough_lines(img,thr,min_line_length,max_line_gap,only_vertical=False,only_ho
                 print(f"left_idx: {left_idx}")
                 print(f"right_idx: {right_idx}")
 
+                print(f"left_idx : {left_idx}, | right_idx : {right_idx}")
+
                 return lines_vertical[left_idx],lines_vertical[right_idx]
+            
             
             return lines_vertical
 
         elif only_horizontal:
             lines_horizontal = []
 
+            # print(f"len(linesP): {len(linesP)}")
+
+            # print(f"linesP[0]: {linesP[0]}")
+            # print(f"linesP[0][0]: {linesP[0][0]}")
+            # print(f"linesP[0][0][0]: {linesP[0][0][0]}")
+
             for line in linesP:
-                line = linesP[0]
+                line = line[0]
+                # print(f"line : {line}")
 
                 if line[1]==line[3]:
                     lines_horizontal.append(line)
@@ -161,9 +186,26 @@ def left_right_coords(lines):
 
     return left_coord, right_coord
 
-def draw_lines(img,lines):
+def draw_lines(img,lines, color=(0,0,255)):
     for line in lines:
-        cv2.line(img,(line[0],line[1]),(line[2],line[3]),(255,255,255),2)
+        cv2.line(img,(line[0],line[1]),(line[2],line[3]),color,4)
 
     plt.imshow(img)
-    plt.draw()
+    plt.show()
+
+
+    # plt.draw()
+
+def draw_box(img, box_coords):
+    # box coords:
+    # top-left coord :     (x,y)
+    # right-bottom coord:  (x,y)
+
+    x_1,y_1 = box_coords[0], box_coords[1]
+    x_2,y_2 = box_coords[2], box_coords[3]
+
+
+    cv2.line(img, (x_1,y_1), (x_2,y_1), (0,255,0), 2)
+    cv2.line(img, (x_2,y_1), (x_2,y_2), (0,255,0), 2)
+    cv2.line(img, (x_2,y_2), (x_1,y_2), (0,255,0), 2)
+    cv2.line(img, (x_1,y_2), (x_1,y_1), (0,255,0), 2)
